@@ -1,9 +1,9 @@
 use std::fs::File;
 use std::io::Write;
+use std::num;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Instant;
-use std::num;
 
 // Function for finding the optimal ranges for splitting up work
 // Explanation: For every number 'x' checked, sqrt(x) operations occur meaning
@@ -23,7 +23,8 @@ fn find_equal_sections(num_segments: u32, total: u32) -> Vec<u32> {
 }
 
 fn is_prime(n: u32) -> bool {
-    for i in 2..=((n as f32).sqrt() as u32) {
+    let limit = (n as f32).sqrt() as u32;
+    for i in 2..=limit {
         if n % i == 0 {
             return false;
         }
@@ -33,53 +34,54 @@ fn is_prime(n: u32) -> bool {
 
 fn main() {
     let (tx, rx) = mpsc::channel();
-    let max = 10_000_000;
+    let max = 100_000_000;
     let num_threads = 8;
     let mut children = vec![];
-    let segment_size = 100_000;
-    let iterations = max / segment_size;
 
     let start = Instant::now();
     let ranges: Vec<u32> = find_equal_sections(num_threads, max);
 
+    // multi-threaded execution
     for i in 0..num_threads {
         let tx = tx.clone();
         let thread_start: u32 = ranges[i as usize];
-        let thread_end: u32 = ranges[(i+1) as usize];
+        let thread_end: u32 = ranges[(i + 1) as usize];
 
         let child = thread::spawn(move || {
-            let mut count = 0;
-            let mut sum: u64 = 0;
-            let mask: u32 = 0b1;
+            let mut primes = Vec::new();
+            if i == 0 {primes.push(2);}
             for n in thread_start..=thread_end {
-                if n & mask == 1 && is_prime(n as u32) {
-                    count += 1;
-                    sum += n as u64;
+                if n % 2 != 0 && is_prime(n as u32) {
+                    primes.push(n);
                 }
             }
             let th_finished_time = start.elapsed();
             println!("Thread #{i} finished check in {:?}!", th_finished_time);
-            tx.send((count, sum)).unwrap();
+            tx.send(primes).unwrap();
         });
         children.push(child);
     }
 
-    let mut total_count = 0;
-    let mut total_sum = 0;
+    let mut all_primes = Vec::new();
     for _ in 0..num_threads {
-        let (count, sum) = rx.recv().unwrap();
-        total_count += count;
-        total_sum += sum;
+        let primes = rx.recv().unwrap();
+        all_primes.extend(primes);
     }
 
     for child in children {
         child.join().unwrap();
     }
 
+    all_primes.sort_unstable();
+    let mut total_count = all_primes.len();
+    let mut total_sum = all_primes.iter().fold(0u64, |sum, i| sum + (*i as u64));
+    let largest_primes = &all_primes[total_count - 10..];
+
     let duration = start.elapsed();
 
-    println!("Execution Time: {:?}", duration);
-    println!("Total primes found: {total_count}");
-    println!("Sum of all primes: {total_sum}");
-    println!("Print top ten maximum primes found");
+    let mut file = File::create("primes.txt").unwrap();
+    write!(file, "{:?} ", duration).unwrap();
+    write!(file, "{} ", total_count).unwrap();
+    write!(file, "{} ", total_sum).unwrap();
+    writeln!(file, "{:?}", largest_primes).unwrap();
 }
