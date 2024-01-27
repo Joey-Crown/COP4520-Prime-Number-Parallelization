@@ -56,7 +56,6 @@ fn main() {
                 }
             }
             let th_finished_time = start.elapsed();
-            println!("Thread #{i} finished check in {:?}!", th_finished_time);
             tx.send(primes).unwrap();
         });
         children.push(child);
